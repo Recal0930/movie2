@@ -19,7 +19,7 @@
             justify-content: center;
             height: 100vh;
             padding: 20px;
-            overflow: hidden; /* 隐藏页面滚动条，避免双重滚动 */
+            overflow: hidden; /* 隐藏页面滚动条 */
         }
         /* 验证页面容器 */
         .verify-container {
@@ -30,18 +30,6 @@
             text-align: center;
             width: 100%;
             max-width: 400px;
-        }
-        /* 电影网站内嵌容器（默认隐藏） */
-        .movie-container {
-            width: 100vw;
-            height: 100vh;
-            display: none; /* 验证通过前隐藏 */
-        }
-        /* 内嵌网站的iframe，占满整个页面 */
-        #movieIframe {
-            width: 100%;
-            height: 100%;
-            border: none; /* 去掉iframe边框 */
         }
         h1 {
             color: #ffffff;
@@ -80,22 +68,6 @@
         .verify-btn:hover {
             background-color: #0088cc;
         }
-        .exit-btn {
-            background-color: #dc3545;
-            color: #ffffff;
-            margin-top: 10px;
-            display: none;
-        }
-        .exit-btn:hover {
-            background-color: #c82333;
-        }
-        .tip {
-            color: #ff4444;
-            margin-top: 15px;
-            font-size: 14px;
-            height: 40px;
-            line-height: 20px;
-        }
         .logout-btn {
             background-color: #6c757d;
             color: #ffffff;
@@ -106,6 +78,13 @@
         }
         .logout-btn:hover {
             background-color: #5a6268;
+        }
+        .tip {
+            color: #ff4444;
+            margin-top: 15px;
+            font-size: 14px;
+            height: 40px;
+            line-height: 20px;
         }
     </style>
 </head>
@@ -119,18 +98,12 @@
         <div class="tip"></div>
     </div>
 
-    <!-- 电影网站内嵌容器（验证通过后显示） -->
-    <div class="movie-container">
-        <!-- iframe 包裹电影网站，用户看不到真实链接 -->
-        <iframe id="movieIframe" src="https://v.aikanbot.com/"></iframe>
-        <!-- 退出内嵌的按钮（悬浮在右上角） -->
-        <button class="btn exit-btn" style="position: fixed; top: 20px; right: 20px; width: auto; padding: 10px 20px; z-index: 9999;">退出观影</button>
-    </div>
-
     <script>
+        // 卡密列表（和版本1保持一致）
         const DAY_CARDS = ["DAY_001", "DAY_002", "DAY_003"];
         const MONTH_CARDS = ["MONTH_001", "MONTH_002", "MONTH_003"];
-        const TARGET_URL = "https://v.aikanbot.com/"; // 内嵌的电影网站链接（已修改）
+        // 目标电影网站（跳转版）
+        const TARGET_URL = "https://v.aikanbot.com/";
 
         // 获取DOM元素
         const [cardInput, verifyBtn, logoutBtn, tip] = [
@@ -139,12 +112,7 @@
             document.querySelector('.logout-btn'),
             document.querySelector('.tip')
         ];
-        const [verifyContainer, movieContainer, movieIframe, exitBtn] = [
-            document.querySelector('.verify-container'),
-            document.querySelector('.movie-container'),
-            document.getElementById('movieIframe'),
-            document.querySelector('.exit-btn')
-        ];
+        const verifyContainer = document.querySelector('.verify-container');
 
         // 页面加载检查验证状态
         window.addEventListener('load', () => {
@@ -152,9 +120,9 @@
             if (verifyInfo?.isVerified && Date.now() < verifyInfo.expireTime) {
                 const remainingDays = Math.ceil((verifyInfo.expireTime - Date.now())/(1000*60*60*24));
                 const cardType = verifyInfo.durationType === 'day' ? '1天卡' : '30天卡';
-                // 直接显示内嵌网站，隐藏验证页面
-                showMovieSite();
-                tip.textContent = `已验证通过（${cardType}，剩余${remainingDays}天）`;
+                // 自动跳转（保留提示）
+                openMovieWindow();
+                tip.textContent = `已验证通过（${cardType}，剩余${remainingDays}天），正在跳转...`;
                 tip.style.color = "#28a745";
             } else if (verifyInfo?.isVerified) {
                 localStorage.removeItem('movieSiteVerifyInfo');
@@ -162,7 +130,7 @@
             }
         });
 
-        // 验证逻辑
+        // 验证逻辑（和版本1保持一致）
         verifyBtn.addEventListener('click', () => {
             const input = cardInput.value.trim();
             if (!input) return tip.textContent = "请输入暗号";
@@ -172,33 +140,43 @@
             else if (MONTH_CARDS.includes(input)) durationType = 'month';
             else return tip.textContent = "暗号无效，请重新输入";
 
-            // 存储验证状态
+            // 存储验证状态（和版本1保持一致）
             localStorage.setItem('movieSiteVerifyInfo', JSON.stringify({
                 isVerified: true,
                 durationType,
                 expireTime: Date.now() + (durationType === 'day' ? 1 : 30) * 24 * 60 * 60 * 1000
             }));
 
-            // 显示内嵌网站，隐藏验证页面
-            showMovieSite();
+            // 跳转电影网站
+            openMovieWindow();
+            const cardType = durationType === 'day' ? '1天卡' : '30天卡';
+            tip.textContent = `验证通过（${cardType}），已为你打开观影窗口`;
+            tip.style.color = "#28a745";
         });
 
-        // 显示内嵌电影网站（核心功能）
-        function showMovieSite() {
-            verifyContainer.style.display = "none"; // 隐藏验证页面
-            movieContainer.style.display = "block"; // 显示内嵌容器
-            movieIframe.src = TARGET_URL; // 加载电影网站（用户看不到真实链接）
-            exitBtn.style.display = "block"; // 显示退出按钮
+        // 核心：打开电影网站新窗口（隐藏地址栏/工具栏，降低复制风险）
+        function openMovieWindow() {
+            // 新窗口参数：隐藏地址栏、工具栏，固定尺寸（普通用户难复制链接）
+            const windowFeatures = 'toolbar=no,location=no,menubar=no,scrollbars=yes,resizable=yes,width=1200,height=800,top=50,left=100';
+            const movieWindow = window.open(TARGET_URL, '_blank', windowFeatures);
+            
+            // 对新窗口做防复制（尽可能限制）
+            if (movieWindow) {
+                movieWindow.addEventListener('load', () => {
+                    try {
+                        // 禁用新窗口的右键/复制/选中
+                        movieWindow.document.addEventListener('contextmenu', e => e.preventDefault());
+                        movieWindow.document.addEventListener('selectstart', e => e.preventDefault());
+                        movieWindow.document.addEventListener('copy', e => e.preventDefault());
+                        movieWindow.document.addEventListener('cut', e => e.preventDefault());
+                    } catch (err) {
+                        // 跨域时无法操作，不影响核心功能
+                    }
+                });
+            }
         }
 
-        // 退出观影（返回验证页面）
-        exitBtn.addEventListener('click', () => {
-            movieContainer.style.display = "none";
-            verifyContainer.style.display = "block";
-            movieIframe.src = ""; // 清空iframe，避免残留
-        });
-
-        // 退出登录（清除验证状态）
+        // 退出登录（和版本1保持一致）
         logoutBtn.addEventListener('click', () => {
             localStorage.removeItem('movieSiteVerifyInfo');
             cardInput.disabled = false;
@@ -207,22 +185,11 @@
             cardInput.value = "";
         });
 
-        // 终极防复制（覆盖整个页面，包括iframe）
+        // 防复制（覆盖验证页面，和版本1保持一致）
         document.addEventListener('contextmenu', e => e.preventDefault()); // 禁用右键
         document.addEventListener('selectstart', e => e.preventDefault()); // 禁止选中
         document.addEventListener('copy', e => e.preventDefault()); // 禁止复制
         document.addEventListener('cut', e => e.preventDefault()); // 禁止剪切
-        // 禁止iframe内的复制行为（增强防护）
-        movieIframe.addEventListener('load', () => {
-            try {
-                const iframeDoc = movieIframe.contentDocument || movieIframe.contentWindow.document;
-                iframeDoc.addEventListener('contextmenu', e => e.preventDefault());
-                iframeDoc.addEventListener('selectstart', e => e.preventDefault());
-                iframeDoc.addEventListener('copy', e => e.preventDefault());
-            } catch (err) {
-                // 若iframe跨域无法操作，主页面防复制已生效，不影响核心功能
-            }
-        });
     </script>
 </body>
 </html>
